@@ -1,4 +1,5 @@
 from PIL import ImageGrab
+import numpy as np
 import time
 from functools import partial
 from datetime import datetime
@@ -17,14 +18,13 @@ def cv_rescale(frame, scale=0.5):
 
 def clear_images():
     if click.confirm('Are you sure you want to delete all your screenshots?:', default=False):
-        files = glob.glob(pathname= 'C:/Users/Surface Pro 6/Desktop'
-                          '/Focus-Pal/**/*.png', recursive=True)
+        files = glob.glob(pathname= '**/*.png', recursive=True)
         for f in files:
             print(f"Now deleting: {f}")
             os.remove(f)
     return
 
-def startup_gui():
+def startup_gui2():
 
     layout = [
         [sg.Text(text='😁📚StudyShame.ai📚😁', font=('Arial Bold', 48),
@@ -67,6 +67,74 @@ def startup_gui():
     window.close()
     return task, num_checkins, abort
 
+def convert_to_int(string):
+
+    if string.isdigit():
+        return int(string)
+    else: 
+        sg.popup_error(f'"{string}" is not a valid integer.',  keep_on_top=True,)
+        return None
+
+def startup_gui():
+
+    layout = [
+        [sg.Text(text='😁📚StudyShame.ai📚😁', font=('Arial Bold', 48),
+        size=20, expand_x=True, justification='center', background_color = '#21535b')],
+        [sg.Text(text='The app that uses guilt to keep you on task :)', font=('Arial', 18), expand_x=True, background_color = '#21535b')],
+        [sg.Text("What task are you working on?:", font=('Arial', 18)), 
+         sg.Input(key="Task", font=('Arial', 24), size = (15,15))],
+        [sg.Text("How long?:", font=('Arial', 18)), 
+         sg.Input(key="Duration hr", font=('Arial', 24), size = (5,5), default_text="0"),
+         sg.Text("hours", font=('Arial', 18)), 
+         sg.Input(key="Duration min", font=('Arial', 24), size = (5,5), default_text="0"),
+         sg.Text("mins", font=('Arial', 18))],
+        [sg.Text("How often should we check in?: every", font=('Arial', 18)), 
+         sg.Input(key="Interval", font=('Arial', 24), size = (5,5), default_text="20"),
+         sg.Text("mins", font=('Arial', 18))],
+        [sg.Button("Let's Frocken GO!!!", font=('Arial Bold', 32))],
+        [sg.Exit()]
+    ]
+
+    window = sg.Window("StudyShame Initiator", layout, 
+                       text_justification='center', element_justification='center')
+
+    while True:
+        event, values = window.read()
+        if event in (sg.WINDOW_CLOSED, "Exit"):
+            abort = True
+            return None, None, abort
+        if event == "Let's Frocken GO!!!":
+            abort = False
+            task = values["Task"]
+            duration_hr = values["Duration hr"]
+            duration_min = values["Duration min"]
+            interval = values["Interval"]
+
+            duration_hr = convert_to_int(duration_hr)
+            if not isinstance(duration_hr, int): continue
+
+            duration_min = convert_to_int(duration_min)
+            if not isinstance(duration_min, int): continue
+
+            interval = convert_to_int(interval)
+            if not isinstance(interval, int): continue
+
+            duration = duration_hr*60 + duration_min
+
+            break
+            # if num_checkins.isdigit():
+            #     num_checkins = int(num_checkins)
+            #     break
+            # else: 
+            #     sg.popup_error(f'"{num_checkins}" is not a valid integer.',  keep_on_top=True,)  
+            # if interval.isdigit():
+            #     interval = int(interval)
+            #     break
+            # else: 
+            #     sg.popup_error(f'"{interval}" is not a valid integer.',  keep_on_top=True,) 
+    window.close()
+    return task, duration, interval, abort
+
 def take_screenshot():
     print('Taking screenshot...')
 
@@ -77,16 +145,11 @@ def take_screenshot():
     filepath = (f'screenshots/{screenshot_time}_ss.png')
     image.save(filepath)
 
-    global screenshot_count
-    screenshot_count += 1
-
-    print(f"#{screenshot_count} saved!")
-
     return filepath, screenshot_time
 
 def take_photo():
     capture = cv.VideoCapture(0)
-    for i in range(60):
+    for i in range(45):
         ret, frame = capture.read()
         if not ret:
             print("Failed to grab frame")
@@ -161,23 +224,47 @@ def capture_and_checkin(task):
 
     return is_on_task
 
+def add_noise(values, std_dev=1):
+    values = np.array(values)
+    noise = np.random.normal(scale=std_dev, size=len(values)).astype(int)
+    noisy_values = values + noise
+    return noisy_values
+
 # def countdown(time):
 
 def main():
-    num_redos = 0
+    added_time = 0
+    elapsed_time = 0
 
-    task, num_checkins, abort = startup_gui()
+    task, duration, interval, abort = startup_gui()
+
+    duration = 24
+    interval = 8
+    std_dev = interval/2
 
     if abort: return
 
-    global screenshot_count 
-    screenshot_count = 0 
+    checkin_times = [*range(interval,duration+1,interval)] # first check-in at time "interval", last at duration+1 (exclusive)
+    noisy_checkin_times = add_noise(checkin_times, std_dev)
 
-    while screenshot_count < (num_checkins + num_redos):
-        is_on_task = capture_and_checkin(task)
-        if not is_on_task:
-            num_redos += 1
+    num_checkins = duration/interval
+
+    print(noisy_checkin_times)
+
+    checkin_count = 0 
+
+    while elapsed_time <= (duration + added_time):
         time.sleep(1)
+        elapsed_time += 1
+        print(elapsed_time)
+        if elapsed_time in noisy_checkin_times:
+            is_on_task = capture_and_checkin(task)
+            checkin_count += 1
+            if not is_on_task:
+                added_time += interval
+                checkin_times.append(duration+added_time)
+                noisy_checkin_times = add_noise(checkin_times, std_dev)
+                print(noisy_checkin_times)      
         
 if __name__ == '__main__':
     main()

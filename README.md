@@ -1,8 +1,7 @@
-# StudyShame
+# 😁📚StudyShame📚😁
+### The accountability partner for those without a real study buddy.
 
-The accountability partner for those with no friends.
-
-StudyShame keeps you on task and gets dissappointed with you when you miss your targets. It includes a countdown timer and a periodic semi-random check-in to ensure that you're always on task. 
+StudyShame uses guilt & passive aggression to keep you on task and make sure you don't miss your targets. It includes a countdown timer and a periodic semi-random check-in to ensure that you're always on task. 
 
 Other features include:
 

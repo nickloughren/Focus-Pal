@@ -1,20 +1,26 @@
-from PIL import ImageGrab
+'''
+Description: The accountability partner for those who have no friends.
+
+To install:
+
+cd "C:\Users\Surface Pro 6\Documents\GitHub\Focus-Pal"
+
+pyinstaller --onefile --name StudyShame --distpath "C:\Users\Surface Pro 6\Documents\GitHub\Focus-Pal\EXE" main.pyw
+
+'''
+
 import numpy as np
 import time
 from functools import partial
 from datetime import datetime, timedelta
-import cv2 as cv
-import matplotlib
-from matplotlib import pyplot as plt
-import PySimpleGUI as sg  # pip install pysimplegui
 import os
 import glob
-import click  # pip install click
 import json
 
-# To install:
-# cd "C:\Users\Surface Pro 6\Documents\GitHub\Focus-Pal"
-# pyinstaller --onefile --name StudyShame --distpath "C:\Users\Surface Pro 6\Documents\GitHub\Focus-Pal\EXE" main.pyw
+import cv2 as cv # pip install opencv-python / pip install opencv-contrib-python
+import matplotlib # pip install matplotlib
+import PySimpleGUI as sg  # pip install pysimplegui
+from PIL import ImageGrab #pip install PIL
 
 
 def cv_rescale(original_path, resized_path, scale=0.5):
@@ -28,13 +34,13 @@ def cv_rescale(original_path, resized_path, scale=0.5):
 
 
 def clear_images():
-    if click.confirm(
-        "Are you sure you want to delete all your screenshots?:", default=False
-    ):
+    confirmation = input("Are you sure you want to delete all your images? (type y/n): ")
+    if confirmation == 'y':
         files = glob.glob(pathname="**/*.png", recursive=True)
         for f in files:
             print(f"Now deleting: {f}")
             os.remove(f)
+    else: print("Ok, your images will remain.")
     return
 
 
@@ -54,7 +60,7 @@ def startup_gui():
     layout = [
         [
             sg.Text(
-                text="😁📚StudyShame.ai📚😁",
+                text="😁📚StudyShame📚😁",
                 font=("Arial Bold", 48),
                 size=20,
                 expand_x=True,

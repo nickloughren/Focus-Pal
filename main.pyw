@@ -1,4 +1,4 @@
-from pillow import ImageGrab
+from PIL import ImageGrab
 import numpy as np
 import time
 from functools import partial

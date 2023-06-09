@@ -2,6 +2,7 @@
 /screenshots
 /EXE
 /build
+/.vscode
 logbook.json
 *.csv
 *.png

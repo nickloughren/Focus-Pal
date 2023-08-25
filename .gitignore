@@ -1,9 +1,14 @@
 /photos
 /screenshots
-/EXE
+/EXE/photos
+/EXE/screenshots
 /build
 /.vscode
-logbook.json
-*.csv
-*.png
+# logbook.json
+chart_image2.png
+test.py
+# *.png
 *.spec
+*.pem
+*.exe 
+# /EXE

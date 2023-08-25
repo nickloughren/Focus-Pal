@@ -1,0 +1,1 @@
+pyinstaller --onefile --name StudyShame --distpath "C:\Users\Surface Pro 6\Documents\GitHub\Focus-Pal\EXE" main.pyw

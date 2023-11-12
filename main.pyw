@@ -14,13 +14,16 @@ from datetime import datetime, timedelta
 import os
 import glob
 import json
+import shutil
 
 import cv2 as cv  # pip install opencv-python / pip install opencv-contrib-python
 import matplotlib.figure as figure  # pip install matplotlib
 import matplotlib.ticker as plticker
+import matplotlib.patheffects as pe
 import PySimpleGUI as sg  # pip install pysimplegui
 from PIL import ImageGrab  # pip install PIL
 import pandas as pd
+import pytz
 
 
 def cv_rescale(original_path, resized_path, scale=0.5):
@@ -693,14 +696,12 @@ def countdown_and_checkins(task, goal, interval, pictures_allowed):
             1.1 if streak_minutes >= 90 else 1.0 if streak_minutes >= 30 else 0.9
         )
         #################
-
         if time_elapsed in checkins:
             is_on_task = checkin(task, pictures_allowed)
             if not is_on_task:
                 time_since_last_checkin -= interval * 1.0
                 streak_minutes, streak_bonus = (0, 0.9)
             update_log(goal, round(time_since_last_checkin * streak_bonus))
-            _ = add_progress_plot([], 365)
             time_completed += round(time_since_last_checkin * streak_bonus)
             time_since_last_checkin = 0
 
@@ -712,6 +713,9 @@ def countdown_and_checkins(task, goal, interval, pictures_allowed):
         timer_window["-Give Up-"].update(f"Streak: {streak_bonus}")
 
         timer_window.refresh()
+
+        if time_elapsed in checkins:
+            _ = add_progress_plot([], 365)
 
     timer_window.close()
     time_completed = goal
@@ -754,7 +758,6 @@ def countup_and_checkins(task, goal, interval, pictures_allowed, streak_minutes)
             giveUp = give_up(True)
             if giveUp == True:
                 update_log(goal, time_since_last_checkin)
-                _ = add_progress_plot([], 365)
                 timer_window.close()
                 return time_completed
             elif giveUp == False:
@@ -792,6 +795,8 @@ def countup_and_checkins(task, goal, interval, pictures_allowed, streak_minutes)
             update_log(goal, round(time_since_last_checkin * streak_bonus))
             time_completed += round(time_since_last_checkin * streak_bonus)
             time_since_last_checkin = 0
+        if time_elapsed in checkins:
+            _ = add_progress_plot([], 365)
 
 
 def update_countdown_times(time_remaining):
@@ -806,8 +811,13 @@ def update_countdown_times(time_remaining):
 def its_bedtime():
     bedtime = 22 * 60 + 00  # 10:00PM
     # floor divide time for seconds since midnight, -5hrs for CST
-    now = (time.time() / 60 - 5 * 60) % (24 * 60)
-    return now >= bedtime
+    central = pytz.timezone("US/Central")
+    now = datetime.now(central)
+    now_minutes = now.hour * 60 + now.minute
+    # now = (time.time() / 60 - 5 * 60) % (24 * 60)
+    print(bedtime)
+    print(now_minutes)
+    return now_minutes >= bedtime
 
 
 def update_log(goal, completed):
@@ -859,7 +869,7 @@ def keep_going_layout(goal, time_completed, task):
     if its_bedtime():
         header = "Go to bed."
         subheader_1 = (
-            f"It's 10:00PM. You accomplished {time_completed}"
+            f"It's 10:00PM. You accomplished {time_completed} "
             + f"out of {goal} minutes of {task}. But I'm cutting you off."
         )
         button_1 = "Let's try again tomorrow"
@@ -1010,47 +1020,80 @@ def add_progress_plot(layout, num_days):
 
     num_days = min(num_days, len(data.keys()))
     indices = [*range(num_days)]
+    indices_in_between = []
+    # indices_in_between.append[index-.5,index+.5 for index in indices]
 
     days = sorted(list(data.keys()))[-num_days:]
     dates = [day[3:] for day in days]
     completed_times = [data[day]["completed"] for day in days]
     goals = [data[day]["goal"] for day in days]
+    # goals_doubled = [goal,goal for goal in goals]
 
     fig = figure.Figure(figsize=(12, 4), dpi=200)
     ax = fig.add_subplot(111)
 
-    opacity = 0.7
+    achieved_goals, achieved_ids, failed_goals, failed_ids = ([], [], [], [])
+    for id, goal, completed in zip(indices, goals, completed_times):
+        if goal > completed:
+            failed_goals.append(goal)
+            failed_ids.append(id)
+        # else:
+        #     achieved_goals.append(goal)
+        #     achieved_ids.append(id)
 
+    # ax.hlines(
+    #     achieved_goals,
+    #     [id - 0.5 for id in achieved_ids],
+    #     [id + 0.5 for id in achieved_ids],
+    #     colors="k",
+    #     alpha=0.0,
+    # )
+    ax.hlines(
+        failed_goals,
+        [id - 0.5 for id in failed_ids],
+        [id + 0.5 for id in failed_ids],
+        colors="w",
+        alpha=1,
+        linewidth=2,
+        label="Missed Goal",
+    )
+    step = ax.step(indices, completed_times, "k", where="mid", linewidth=0.7)
     completed_bars = ax.bar(
         indices,
         completed_times,
         width=0.85 + 0.15,
         color="#9cff43",
         label="Completed",  # old colour:"#00B7CB"
+        # edgecolor="k",
+        # edgewidth=1,
     )
+
     goal_bars = ax.bar(
         indices,
         goals,
         width=0.95 + 0.05,
         color="#898A8A",
-        alpha=opacity,
+        alpha=0.5,
         label="Goal",
     )
 
     completed_series = pd.Series(completed_times)
     moving_average_7 = completed_series.rolling(window=7).mean()
+
     ax.plot(
         moving_average_7,
-        color="#4D712F",
+        color="#6fa83e",
         label="7-Day Avg",
-        linewidth=2.5,
+        linewidth=2,
+        path_effects=[pe.Stroke(linewidth=4, foreground="k"), pe.Normal()],
     )
     moving_average_30 = completed_series.rolling(window=30).mean()
     ax.plot(
         moving_average_30,
         color="#b5cca3",
         label="30-Day Avg",
-        linewidth=2.5,
+        linewidth=2,
+        path_effects=[pe.Stroke(linewidth=4, foreground="k"), pe.Normal()],
     )
 
     max_7_day_idx = moving_average_7.idxmax()
@@ -1060,7 +1103,7 @@ def add_progress_plot(layout, num_days):
     max_annotation = ax.annotate(
         f"{(max_7_day/60*7):.1f} hr/wk",
         xy=(max_7_day_idx, max_7_day),
-        xytext=(max_7_day_idx, max_7_day * 1.10),
+        xytext=(max_7_day_idx - len(dates) * 0.075, max_7_day * 1.10),
     )
     max_annotation.set_bbox(dict(facecolor="white", alpha=0.4, edgecolor="white"))
 
@@ -1089,9 +1132,16 @@ def add_progress_plot(layout, num_days):
     ax.grid(alpha=0.3, linewidth=0.5)
 
     plot_path = "chart_image.png"
-    plot_path2 = "chart_image2.png"  # so Windows background slideshow refreshs image
+    plot_path_copy = (
+        "chart_image_copy.png"  # so Windows background slideshow refreshs image
+    )
+    plot_path_copy2 = "chart_image_copy2.png"
+    plot_path_copy3 = "chart_image_copy3.png"
     fig.savefig(plot_path)
-    fig.savefig(plot_path2)
+    shutil.copyfile(plot_path, plot_path_copy)
+    shutil.copyfile(plot_path, plot_path_copy2)
+    shutil.copyfile(plot_path, plot_path_copy3)
+    shutil.copyfile(plot_path_copy, plot_path)
 
     rescaled_plot = cv_rescale(plot_path, plot_path, scale=0.5)
 

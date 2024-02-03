@@ -1,0 +1,10 @@
+{
+  "Bedtime (hr)": 10,
+  "Bedtime (min)": 40,
+  "Bedtime (AM or PM)": "PM",
+  "Default Check-in Interval (min)": 10,
+  "Default Goal (hr)": 0,
+  "Default Goal (min)": 0,
+  "Default to using the streaks feature? (True/False)": "True",
+  "Should the forbidden button be accessible? (True/False)": "True"
+}

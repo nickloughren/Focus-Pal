@@ -5,6 +5,10 @@
 # cd Documents\GitHub\Focus-Pal
 
 # pyinstaller --onefile --name StudyShame --distpath EXE main.pyw
+# or
+# auto-py-to-exe
+# or
+# pyinstaller --noconfirm --onefile --windowed  "C:/Users/Surface Pro 6/Documents/GitHub/Focus-Pal/main.pyw"
 
 
 import numpy as np
@@ -15,6 +19,7 @@ import os
 import glob
 import json
 import shutil
+import random
 
 import cv2 as cv  # pip install opencv-python / pip install opencv-contrib-python
 import matplotlib.figure as figure  # pip install matplotlib
@@ -65,7 +70,37 @@ def startup_gui():
     text_background_color = "#477320"
     menu_open = False
 
+    today = datetime.now()
+    this_morn = today.replace(hour=0, minute=0, second=0, microsecond=0)
+    unix_time_this_morn = int(this_morn.timestamp())
+
+    filename = "_SETTINGS.json"
+    with open(filename, "r") as file:
+        data = json.load(file)
+    default_interval = data["Default Check-in Interval (min)"]
+    default_goal_hrs = data["Default Goal (hr)"]
+    default_goal_mins = data["Default Goal (min)"]
+    default_streaks_bool = data["Default to using the streaks feature? (True/False)"]
+    secret_button_allowed = (
+        data["Should the forbidden button be accessible? (True/False)"] == "True"
+    )
+
     hidden_menu = [
+        [
+            sg.Text(
+                (
+                    "                                                        "
+                    + 'Would you like to use the "Streaks" feature?:'
+                ),
+                font=("Arial", 12),
+            ),
+            sg.Checkbox(
+                "",
+                default=default_streaks_bool == "True",
+                checkbox_color=text_background_color,
+                key="-Streaks-",
+            ),
+        ],
         [
             sg.Text("What will you be working on?:", font=("Arial", 18)),
             sg.Input(
@@ -90,14 +125,36 @@ def startup_gui():
                 key="-Pictures Allowed-",
             ),
         ],
+        # [
+        #     sg.Button(
+        #         "Forbidden button that should only be pressed if you know what you're doing! >:(",
+        #         font=("Arial", 8),
+        #         key="-Add Time-",
+        #     )
+        # ],
         [
-            sg.Button(
-                "Secret button that should only be pressed if you know what you're doing",
-                font=("Arial", 6),
-                key="-Add Time-",
+            sg.Text(
+                text='Open the file "_SETTINGS.json" for even more options!',
+                font=("Arial", 12),
+                expand_x=True,
+                # text_color="black",
+                # background_color=text_background_color,  # "#21535b",
             )
         ],
     ]
+    if secret_button_allowed:
+        hidden_menu.append(
+            [
+                sg.Text(
+                    text="                                 ",
+                ),
+                sg.Button(
+                    "Forbidden button that should only be pressed if you know what you're doing! >:(",
+                    font=("Arial", 8),
+                    key="-Add Time-",
+                ),
+            ],
+        )
 
     layout = [
         [
@@ -123,18 +180,27 @@ def startup_gui():
         [
             sg.Text("What's our goal for today?:", font=("Arial", 18)),
             sg.Input(
-                key="Duration hr", font=("Arial", 24), size=(5, 5), default_text="0"
+                key="Duration hr",
+                font=("Arial", 24),
+                size=(5, 5),
+                default_text=default_goal_hrs,
             ),
             sg.Text("hours", font=("Arial", 18)),
             sg.Input(
-                key="Duration min", font=("Arial", 24), size=(5, 5), default_text="0"
+                key="Duration min",
+                font=("Arial", 24),
+                size=(5, 5),
+                default_text=default_goal_mins,
             ),
             sg.Text("mins", font=("Arial", 18)),
         ],
         [
             sg.Text("How often should I check in?: every", font=("Arial", 18)),
             sg.Input(
-                key="Interval", font=("Arial", 24), size=(5, 5), default_text="10"
+                key="Interval",
+                font=("Arial", 24),
+                size=(5, 5),
+                default_text=str(default_interval),
             ),
             sg.Text("mins", font=("Arial", 18)),
         ],
@@ -156,7 +222,7 @@ def startup_gui():
         [sg.Button("Let's GO!!!", font=("Arial Bold", 32)), sg.Exit()],
     ]
 
-    layout = add_todays_total(layout)
+    layout, _, _, _ = add_todays_total(layout)
 
     window = sg.Window(
         "StudyShame Initiator",
@@ -170,7 +236,7 @@ def startup_gui():
         event, values = window.read()
         if event in (sg.WINDOW_CLOSED, "Exit"):
             abort = True
-            return None, None, None, None, abort
+            return None, None, None, None, abort, None, None, None
         if event.startswith("-OPEN MENU-"):
             menu_open = not menu_open
             window["-OPEN MENU-"].update("▼" if menu_open else "►")
@@ -186,6 +252,7 @@ def startup_gui():
             duration_min = values["Duration min"]
             interval = values["Interval"]
             pictures_allowed = values["-Pictures Allowed-"]
+            streaks_bool = values["-Streaks-"]
 
             duration_hr = convert_to_int(duration_hr)
             if not isinstance(duration_hr, int):
@@ -199,10 +266,24 @@ def startup_gui():
 
             duration = duration_hr * 60 + duration_min
 
+            central = pytz.timezone("US/Central")
+            today = datetime.now(central)
+            this_morn = today.replace(hour=0, minute=0, second=0, microsecond=0)
+            unix_time_this_morn = int(this_morn.timestamp())
+
             break
 
     window.close()
-    return task, duration, interval, pictures_allowed, abort
+    return (
+        task,
+        duration,
+        interval,
+        pictures_allowed,
+        abort,
+        streaks_bool,
+        secret_button_allowed,
+        unix_time_this_morn,
+    )
 
 
 def flash():
@@ -396,7 +477,7 @@ def add_noise(values, std_dev=1):
     return noisy_values
 
 
-def give_up(goal_already_achieved):
+def give_up(goal_already_achieved, secret_button_allowed):
     text_background_color = "#477320"
 
     layout = [
@@ -416,14 +497,24 @@ def give_up(goal_already_achieved):
             sg.Button("I'm sure", font=("Arial Bold", 16)),
             sg.Button("Let's keep going", font=("Arial Bold", 16)),
         ],
-        [
-            sg.Button(
-                "Secret button that should only be pressed if you know what you're doing",
-                font=("Arial", 6),
-                key="-Add Time-",
-            )
-        ],
+        # [
+        #     sg.Button(
+        #         "Forbidden button that should only be pressed if you know what you're doing! >:(",
+        #         font=("Arial", 8),
+        #         key="-Add Time-",
+        #     )
+        # ],
     ]
+    if secret_button_allowed:
+        layout.append(
+            [
+                sg.Button(
+                    "Forbidden button that should only be pressed if you know what you're doing! >:(",
+                    font=("Arial", 8),
+                    key="-Add Time-",
+                )
+            ],
+        )
 
     if not goal_already_achieved:
         encouragement = [
@@ -496,7 +587,7 @@ def add_time():
         ],
     ]
 
-    layout = add_todays_total(layout)
+    layout, _, _, _ = add_todays_total(layout)
 
     window = sg.Window(
         "Add/Subtract Time",
@@ -591,7 +682,12 @@ def countup_window():
     text_background_color = "#234f00"
 
     time_completed_str = f"0:00"
-    goal_str = "Goal: 0:00"
+
+    # I decided to have this func output today's goal
+    _, _, goal_today, _ = add_todays_total([])
+    goal_str = timedelta(minutes=goal_today)
+    goal_str = str(goal_str)[:-3]
+    goal_str = f"Goal: {goal_str}"
 
     timer_layout = [
         [
@@ -636,17 +732,32 @@ def countup_window():
 
 
 def checkin_times(interval):
-    # generates a set of times that are semi-random. This is to
-    # ensure that roughly every X minutes there will be a
-    # checkin while maintaining unpredictibility
-
+    # Generates either random or semi-random numbers.
     max_num_minutes = 60 * 24 * 7
-    checkin_times = [*range(interval, max_num_minutes, interval)]
-    noisy_checkin_times = add_noise(checkin_times, std_dev=interval)
-    return noisy_checkin_times
+
+    # # generates a set of times that are semi-random. This is to
+    # # ensure that roughly every X minutes there will be a
+    # # checkin while maintaining unpredictibility (fully random)
+    # checkin_times = [*range(interval, max_num_minutes, interval)]
+    # checkin_times = add_noise(checkin_times, std_dev=interval)
+
+    # Generates a list of max_num_minutes/interval numbers from 1 to max_num_minutes (fully random)
+    checkin_times = random.sample(
+        range(1, max_num_minutes), int(max_num_minutes / interval)
+    )
+
+    return checkin_times
 
 
-def countdown_and_checkins(task, goal, interval, pictures_allowed):
+def countdown_and_checkins(
+    task,
+    goal,
+    interval,
+    pictures_allowed,
+    streaks_bool,
+    secret_button_allowed,
+    time_this_morn,
+):
     sec_2_msec = 1000  # decrease to speed up
     time_elapsed = 0
     time_completed = 0
@@ -661,14 +772,14 @@ def countdown_and_checkins(task, goal, interval, pictures_allowed):
     checkins = checkin_times(interval)
 
     while (time_completed + time_since_last_checkin) < goal:
-        if its_bedtime():
+        if its_bedtime(time_this_morn):
             update_log(goal, time_since_last_checkin)
             timer_window.close()
             return time_completed, streak_minutes
 
         event, values = timer_window.read(timeout=60 * sec_2_msec)
         if event == "-Give Up-":
-            giveUp = give_up(False)
+            giveUp = give_up(False, secret_button_allowed)
             if giveUp == True:
                 timer_window.close()
                 return time_completed, streak_minutes
@@ -688,12 +799,12 @@ def countdown_and_checkins(task, goal, interval, pictures_allowed):
         streak_minutes = (
             streak_minutes + 1
             if diff < 90
-            else streak_minutes - interval
-            if diff < 120
-            else 0
+            else streak_minutes - interval if diff < 120 else 0
         )
         streak_bonus = (
-            1.1 if streak_minutes >= 90 else 1.0 if streak_minutes >= 30 else 0.9
+            1.1
+            if streak_minutes >= 90
+            else 1.0 if streak_minutes >= 30 or not streaks_bool else 0.9
         )
         #################
         if time_elapsed in checkins:
@@ -710,7 +821,8 @@ def countdown_and_checkins(task, goal, interval, pictures_allowed):
         completion_time, time_remaining_string = update_countdown_times(time_remaining)
         timer_window["-Remaining-"].update(time_remaining_string)
         timer_window["-Completion-"].update(completion_time)
-        timer_window["-Give Up-"].update(f"Streak: {streak_bonus}")
+        if streaks_bool:
+            timer_window["-Give Up-"].update(f"Streak: {streak_bonus}")
 
         timer_window.refresh()
 
@@ -724,7 +836,16 @@ def countdown_and_checkins(task, goal, interval, pictures_allowed):
     return time_completed, streak_minutes
 
 
-def countup_and_checkins(task, goal, interval, pictures_allowed, streak_minutes):
+def countup_and_checkins(
+    task,
+    goal,
+    interval,
+    pictures_allowed,
+    streak_minutes,
+    streaks_bool,
+    secret_button_allowed,
+    time_this_morn,
+):
     sec_2_msec = 1000  # decrease to speed up
 
     time_completed = goal
@@ -738,24 +859,27 @@ def countup_and_checkins(task, goal, interval, pictures_allowed, streak_minutes)
     event, values = timer_window.read(timeout=0)
 
     while True:
-        if its_bedtime():
+        if its_bedtime(time_this_morn):
             update_log(goal, time_since_last_checkin)
             timer_window.close()
             return time_completed
 
-        time_completed_str = timedelta(minutes=time_completed + time_since_last_checkin)
+        _, _, _, time_completed_today = add_todays_total([])
+        time_completed_str = timedelta(
+            minutes=time_completed_today + time_since_last_checkin
+        )
         time_completed_str = str(time_completed_str)[:-3]
-        goal_str = timedelta(minutes=goal)
-        goal_str = "Goal: " + str(goal_str)[:-3]
+        # goal_str = timedelta(minutes=goal)
+        # goal_str = "Goal: " + str(goal_str)[:-3]
         timer_window["-Completed-"].update(time_completed_str)
-        timer_window["-Goal-"].update(goal_str)
+        # timer_window["-Goal-"].update(goal_str)
 
         timer_window.refresh()
 
         event, values = timer_window.read(timeout=60 * sec_2_msec)
 
         if event == "-Give Up-":
-            giveUp = give_up(True)
+            giveUp = give_up(True, secret_button_allowed)
             if giveUp == True:
                 update_log(goal, time_since_last_checkin)
                 timer_window.close()
@@ -776,15 +900,16 @@ def countup_and_checkins(task, goal, interval, pictures_allowed, streak_minutes)
         streak_minutes = (
             streak_minutes + 1
             if diff < 90
-            else streak_minutes - interval
-            if diff < 120
-            else 0
+            else streak_minutes - interval if diff < 120 else 0
         )
         streak_bonus = (
-            1.1 if streak_minutes >= 60 else 1.0 if streak_minutes >= 30 else 0.9
+            1.1
+            if streak_minutes >= 60
+            else 1.0 if streak_minutes >= 30 or not streaks_bool else 0.9
         )
         print(streak_bonus, streak_minutes)
-        timer_window["-Give Up-"].update(f"Streak: {streak_bonus}")
+        if streaks_bool:
+            timer_window["-Give Up-"].update(f"Streak: {streak_bonus}")
         #################
 
         if time_elapsed in checkins:
@@ -808,16 +933,38 @@ def update_countdown_times(time_remaining):
     return completion_time, time_remaining_string
 
 
-def its_bedtime():
-    bedtime = 22 * 60 + 00  # 10:00PM
-    # floor divide time for seconds since midnight, -5hrs for CST
+def its_bedtime(time_this_morn):
+    filename = "_SETTINGS.json"
+    with open(filename, "r") as file:
+        data = json.load(file)
+    bedtime_hr = data["Bedtime (hr)"]
+    bedtime_min = data["Bedtime (min)"]
+    bedtime_am = data["Bedtime (AM or PM)"] == "AM"
+    if bedtime_hr == 12:
+        bedtime_hr = 0
+
+    bedtime_secs = (
+        int(bedtime_hr * 60) + int(bedtime_min) + 12 * 60 + int(bedtime_am) * 12 * 60
+    ) * 60  # 10:00PM
+    # floor divide time for seconds since midnight, -5hrs for CS
+
     central = pytz.timezone("US/Central")
     now = datetime.now(central)
-    now_minutes = now.hour * 60 + now.minute
-    # now = (time.time() / 60 - 5 * 60) % (24 * 60)
-    print(bedtime)
-    print(now_minutes)
-    return now_minutes >= bedtime
+    unix_time_now = int(now.timestamp())
+
+    time_secs = (
+        unix_time_now - time_this_morn
+    )  # this is how long it's been since the morning.
+
+    # now = datetime.now(central)
+    # now_minutes = now.hour * 60 + now.minute
+    # if now_minutes < 5 * 60:
+    #     now_minutes += (
+    #         24 * 60
+    #     )  # we want times after midnight to be larger than times before
+    # # now = (time.time() / 60 - 5 * 60) % (24 * 60)
+
+    return time_secs >= bedtime_secs
 
 
 def update_log(goal, completed):
@@ -826,7 +973,7 @@ def update_log(goal, completed):
 
     # Define a dictionary
     new_entry = {today_key: {"goal": int(goal), "completed": int(completed)}}
-    filename = "logbook.json"
+    filename = "_PROGRESS_LOG.json"
 
     # 1. Read the JSON file
     with open(filename, "r") as file:
@@ -848,6 +995,12 @@ def update_log(goal, completed):
 
 def fill_empty_days_in_log(data, today):
     # updating previous days with 0 completed if inactive
+
+    if len(data) == 0:  # _PROGRESS_LOG is empty
+        new_entry = {str(today.strftime("%y-%m-%d")): {"goal": 0, "completed": 0}}
+        data.update(new_entry)
+        return data
+
     day = today
     dates_missed = []
     while True:
@@ -865,33 +1018,31 @@ def fill_empty_days_in_log(data, today):
     return data
 
 
-def keep_going_layout(goal, time_completed, task):
-    if its_bedtime():
+def keep_going_layout(goal, time_completed, task, time_this_morn):
+    if its_bedtime(time_this_morn):
         header = "Go to bed."
         subheader_1 = (
-            f"It's 10:00PM. You accomplished {time_completed} "
-            + f"out of {goal} minutes of {task}. But I'm cutting you off."
+            f"It's bed time. You accomplished {time_completed} out of {goal} minutes of {task}. "
+            + f"But I'm cutting you off. Sleep is essential for health and wellbeing, and that's NO JOKE!"
         )
         button_1 = "Let's try again tomorrow"
     elif time_completed < goal:
         header = "You failed:("
         subheader_1 = (
-            f"I believed in you but you only did {time_completed} out "
-            + f"of the {goal} minutes of {task} that you promised."
+            f"Wow. Your really let me down. You only did {time_completed} out "
+            + f"of the {goal} minutes of {task} that you promised. I believed in you."
         )
         button_1 = "I'm sorry, lemme try again"
     elif time_completed == goal:
         header = "You did it!🥳"
-        subheader_1 = (
-            f"You completed {time_completed} minutes of {task}! I'm very proud."
-        )
+        subheader_1 = f"Wow! You completed {time_completed} minutes of {task}! I knew you had it in you. I'm very proud."
         button_1 = "Main menu"
         button_2 = "Keep going"
     else:
         header = "Nice job!🥳"
         subheader_1 = (
-            f"You completed {time_completed} minutes of {task}!"
-            + f" I'm speechless. You are killing the game."
+            f"Wow! You completed {time_completed} minutes of {task}!"
+            + f" I'm actually speechless. You're straight up killing the game. Look at this graph. You're a MENACE!!!"
         )
         button_1 = "Main menu"
 
@@ -930,12 +1081,12 @@ def keep_going_layout(goal, time_completed, task):
         buttons.insert(0, sg.Button(button_2, font=("Arial Bold", 16)))
 
     layout.append(buttons)
-    layout = add_todays_total(layout)
+    # layout, _, _, _ = add_todays_total(layout)
     return layout
 
 
-def keep_going(goal, task, time_completed):
-    layout = keep_going_layout(goal, time_completed, task)
+def keep_going(goal, task, time_completed, time_this_morn):
+    layout = keep_going_layout(goal, time_completed, task, time_this_morn)
 
     window = sg.Window(
         "StudyShame.ai",
@@ -961,27 +1112,27 @@ def add_todays_total(layout):
     """adds a total number of completed minutes for
     the day under give_up, keep_going and startup"""
 
-    filename = "logbook.json"
+    filename = "_PROGRESS_LOG.json"
 
     today = datetime.today()
     today_key = str(today.strftime("%y-%m-%d"))
-    keys_since_last_Sat = []
-    num_days_since_Sat = (today.weekday() + 2) % 7
+    keys_since_last_sunday = []
+    num_days_since_sunday = (today.weekday() + 1) % 7
 
-    for i in range(num_days_since_Sat + 1):
+    for i in range(num_days_since_sunday + 1):
         date = today - timedelta(days=i)
-        keys_since_last_Sat.append(str(date.strftime("%y-%m-%d")))
+        keys_since_last_sunday.append(str(date.strftime("%y-%m-%d")))
 
     with open(filename, "r") as file:
         data = json.load(file)
 
-    time_left_since_Sat = 0
+    time_left_since_sunday = 0
 
     if today_key in data:
         time_completed_today = data[today_key]["completed"]
         goal_today = data[today_key]["goal"]
-        for key in keys_since_last_Sat:
-            time_left_since_Sat += data[key]["goal"] - data[key]["completed"]
+        for key in keys_since_last_sunday:
+            time_left_since_sunday += data[key]["goal"] - data[key]["completed"]
 
     else:
         time_completed_today = 0
@@ -989,8 +1140,8 @@ def add_todays_total(layout):
 
     todays_total_str = (
         f"Today's total: {time_completed_today} min, Today's goal: {goal_today} min, "
-        + f"Time left: {goal_today - time_completed_today} min, "
-        + f"Time left since Saturday: {time_left_since_Sat} min"
+        + f"Time left today: {goal_today - time_completed_today} min, "
+        + f"Time left this week: {time_left_since_sunday} min"
     )
     todays_total = [
         sg.Text(
@@ -1004,7 +1155,7 @@ def add_todays_total(layout):
         )
     ]
     layout.append(todays_total)
-    return layout
+    return layout, todays_total_str, goal_today, time_completed_today
 
 
 def todays_date():
@@ -1015,17 +1166,25 @@ def todays_date():
 
 
 def add_progress_plot(layout, num_days):
-    with open("logbook.json", "r") as file:
+    with open("_PROGRESS_LOG.json", "r") as file:
         data = json.load(file)
 
     num_days = min(num_days, len(data.keys()))
     indices = [*range(num_days)]
     indices_in_between = []
     # indices_in_between.append[index-.5,index+.5 for index in indices]
-
-    days = sorted(list(data.keys()))[-num_days:]
+    days = sorted(list(data.keys()))[-(num_days):]
     dates = [day[3:] for day in days]
     completed_times = [data[day]["completed"] for day in days]
+
+    if len(data.keys()) - num_days > 30:
+        days_for_moving_avgs = sorted(list(data.keys()))[-(num_days + 30) :]
+        completed_times_for_moving_avgs = [
+            data[day]["completed"] for day in days_for_moving_avgs
+        ]
+    else:
+        completed_times_for_moving_avgs = completed_times
+
     goals = [data[day]["goal"] for day in days]
     # goals_doubled = [goal,goal for goal in goals]
 
@@ -1057,7 +1216,9 @@ def add_progress_plot(layout, num_days):
         linewidth=2,
         label="Missed Goal",
     )
-    step = ax.step(indices, completed_times, "k", where="mid", linewidth=0.7)
+    outline = ax.step(
+        indices, completed_times, "k", where="mid", linewidth=2.0, zorder=0
+    )
     completed_bars = ax.bar(
         indices,
         completed_times,
@@ -1077,35 +1238,48 @@ def add_progress_plot(layout, num_days):
         label="Goal",
     )
 
-    completed_series = pd.Series(completed_times)
-    moving_average_7 = completed_series.rolling(window=7).mean()
+    completed_series = pd.Series(completed_times_for_moving_avgs)
+    _, todays_total_str, _, _ = add_todays_total([])
 
-    ax.plot(
-        moving_average_7,
-        color="#6fa83e",
-        label="7-Day Avg",
-        linewidth=2,
-        path_effects=[pe.Stroke(linewidth=4, foreground="k"), pe.Normal()],
-    )
-    moving_average_30 = completed_series.rolling(window=30).mean()
-    ax.plot(
-        moving_average_30,
-        color="#b5cca3",
-        label="30-Day Avg",
-        linewidth=2,
-        path_effects=[pe.Stroke(linewidth=4, foreground="k"), pe.Normal()],
-    )
+    if len(completed_series) >= 35:
+        moving_average_7 = (
+            completed_series.rolling(window=7).mean().shift(-30)[:num_days]
+        )
 
-    max_7_day_idx = moving_average_7.idxmax()
-    max_7_day = moving_average_7.iloc[max_7_day_idx]
-    ax.plot(max_7_day_idx, max_7_day, "k.")
+        ax.plot(
+            moving_average_7,
+            color="#6fa83e",
+            label="7-Day Avg",
+            linewidth=2,
+            path_effects=[pe.Stroke(linewidth=4, foreground="k"), pe.Normal()],
+        )
 
-    max_annotation = ax.annotate(
-        f"{(max_7_day/60*7):.1f} hr/wk",
-        xy=(max_7_day_idx, max_7_day),
-        xytext=(max_7_day_idx - len(dates) * 0.075, max_7_day * 1.10),
-    )
-    max_annotation.set_bbox(dict(facecolor="white", alpha=0.4, edgecolor="white"))
+        moving_average_28 = (
+            completed_series.rolling(window=28).mean().shift(-30)[:num_days]
+        )
+        ax.plot(
+            moving_average_28,
+            color="#b5cca3",
+            label="28-Day Avg",
+            linewidth=2,
+            path_effects=[pe.Stroke(linewidth=4, foreground="k"), pe.Normal()],
+        )
+
+        max_7_day_idx = moving_average_7.idxmax()
+        max_7_day = moving_average_7.iloc[max_7_day_idx]
+        ax.plot(max_7_day_idx, max_7_day, "k.")
+
+        max_annotation = ax.annotate(
+            f"{(max_7_day/60*7):.1f} hr/wk",
+            xy=(max_7_day_idx, max_7_day),
+            xytext=(max_7_day_idx - len(dates) * 0.075, max_7_day * 1.10),
+        )
+        max_annotation.set_bbox(dict(facecolor="white", alpha=0.4, edgecolor="white"))
+        ax.set_title(
+            f"Past 7 Days: {(moving_average_7.iloc[-1]/60*7):.1f} hrs, {todays_total_str}"
+        )
+    else:
+        ax.set_title(f"{todays_total_str}")
 
     tick_labels = dates[::-7]
     tick_indices = indices[::-7]
@@ -1118,12 +1292,9 @@ def add_progress_plot(layout, num_days):
     ax.set_xticks(tick_indices)
     ax.set_xticklabels(tick_labels, rotation=90)
     ax.tick_params(right=True, labelright=True)
-    ax.set_facecolor("#414141")
+    ax.set_facecolor("#353535")
     fig.set_facecolor("#6C6C6C")
     ax.legend(loc="upper left", fontsize="8", facecolor="#6C6C6C")
-    ax.set_title(
-        f"Your Progress (Past 7 Days: {(moving_average_7.iloc[-1]/60*7):.1f} hrs)"
-    )
 
     loc = plticker.MultipleLocator(base=60.0)
     ax.yaxis.set_major_locator(loc)
@@ -1131,12 +1302,12 @@ def add_progress_plot(layout, num_days):
     fig.tight_layout()
     ax.grid(alpha=0.3, linewidth=0.5)
 
-    plot_path = "chart_image.png"
+    plot_path = "plot.png"
     plot_path_copy = (
-        "chart_image_copy.png"  # so Windows background slideshow refreshs image
+        "plot_copies/1.png"  # so Windows background slideshow refreshs image
     )
-    plot_path_copy2 = "chart_image_copy2.png"
-    plot_path_copy3 = "chart_image_copy3.png"
+    plot_path_copy2 = "plot_copies/2.png"
+    plot_path_copy3 = "plot_copies/3.png"
     fig.savefig(plot_path)
     shutil.copyfile(plot_path, plot_path_copy)
     shutil.copyfile(plot_path, plot_path_copy2)
@@ -1146,7 +1317,6 @@ def add_progress_plot(layout, num_days):
     rescaled_plot = cv_rescale(plot_path, plot_path, scale=0.5)
 
     layout.append([sg.Image(rescaled_plot)])
-
     return layout
 
 
@@ -1175,20 +1345,42 @@ def main():
     set_theme()
 
     while True:
-        task, goal, interval, pictures_allowed, abort = startup_gui()
+        (
+            task,
+            goal,
+            interval,
+            pictures_allowed,
+            abort,
+            streaks_bool,
+            secret_button_allowed,
+            time_this_morn,
+        ) = startup_gui()
         if abort:
             return
 
         time_completed, streak_minutes = countdown_and_checkins(
-            task, goal, interval, pictures_allowed
+            task,
+            goal,
+            interval,
+            pictures_allowed,
+            streaks_bool,
+            secret_button_allowed,
+            time_this_morn,
         )
 
-        keepGoing = keep_going(goal, task, time_completed)
+        keepGoing = keep_going(goal, task, time_completed, time_this_morn)
         if keepGoing == "Count Up":
             time_completed = countup_and_checkins(
-                task, goal, interval, pictures_allowed, streak_minutes
+                task,
+                goal,
+                interval,
+                pictures_allowed,
+                streak_minutes,
+                streaks_bool,
+                secret_button_allowed,
+                time_this_morn,
             )
-            if not keep_going(goal, task, time_completed):
+            if not keep_going(goal, task, time_completed, time_this_morn):
                 return
 
         elif keepGoing == True:

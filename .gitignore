@@ -2,6 +2,7 @@
 /screenshots
 /EXE/photos
 /EXE/screenshots
+/StudyShame
 /build
 /.vscode
 # logbook.json
@@ -11,4 +12,5 @@ test.py
 *.spec
 *.pem
 *.exe 
+*.zip
 # /EXE

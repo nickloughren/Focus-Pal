@@ -1309,10 +1309,13 @@ def add_progress_plot(layout, num_days):
     plot_path_copy2 = "plot_copies/2.png"
     plot_path_copy3 = "plot_copies/3.png"
     fig.savefig(plot_path)
-    shutil.copyfile(plot_path, plot_path_copy)
-    shutil.copyfile(plot_path, plot_path_copy2)
-    shutil.copyfile(plot_path, plot_path_copy3)
-    shutil.copyfile(plot_path_copy, plot_path)
+    try:
+        shutil.copyfile(plot_path, plot_path_copy)
+        shutil.copyfile(plot_path, plot_path_copy2)
+        shutil.copyfile(plot_path, plot_path_copy3)
+        shutil.copyfile(plot_path_copy, plot_path)
+    except:
+        "Failed to make the plots. idk sometimes there's issues w this sorry."
 
     rescaled_plot = cv_rescale(plot_path, plot_path, scale=0.5)
 

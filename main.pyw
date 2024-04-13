@@ -618,7 +618,7 @@ def add_time():
             break
 
     window.close()
-    update_log(-1, time_2_add)
+    update_log(0, time_2_add)
     return time_2_add
 
 
@@ -771,6 +771,8 @@ def countdown_and_checkins(
 
     checkins = checkin_times(interval)
 
+    update_log(goal, 0)
+
     while (time_completed + time_since_last_checkin) < goal:
         if its_bedtime(time_this_morn):
             update_log(goal, time_since_last_checkin)
@@ -899,8 +901,8 @@ def countup_and_checkins(
 
         streak_minutes = (
             streak_minutes + 1
-            if diff < 90
-            else streak_minutes - interval if diff < 120 else 0
+            if diff < 120
+            else streak_minutes - interval if diff < 300 else 0
         )
         streak_bonus = (
             1.1
